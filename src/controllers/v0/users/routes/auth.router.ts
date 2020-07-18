@@ -1,3 +1,4 @@
+import { config } from './../../../../config/config';
 import { Router, Request, Response } from 'express';
 
 import { User } from '../models/User';
@@ -11,42 +12,56 @@ import * as EmailValidator from 'email-validator';
 const router: Router = Router();
 
 async function generatePassword(plainTextPassword: string): Promise<string> {
-  //@TODO Use Bcrypt to Generated Salted Hashed Passwords
-  return;
+  // Number of rounds
+  const saltRounds = 10;
+
+  // Generate Salt
+  const salt = await bcrypt.genSalt(saltRounds);
+
+  // Generate hash from plain text and salt
+  const hash = await bcrypt.hash(plainTextPassword, salt);
+
+  return hash;
 }
 
 async function comparePasswords(
   plainTextPassword: string,
   hash: string
 ): Promise<boolean> {
-  //@TODO Use Bcrypt to Compare your password to your Salted Hashed Password
-  return;
+  // Compare plain text password and hash
+  return await bcrypt.compare(plainTextPassword, hash);
 }
 
 function generateJWT(user: User): string {
-  //@TODO Use jwt to create a new JWT Payload containing
-  return;
+  // Generate a JWT
+  return jwt.sign(user, config.jwt.secret);
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  return next();
-  // if (!req.headers || !req.headers.authorization){
-  //     return res.status(401).send({ message: 'No authorization headers.' });
-  // }
+  // Check if there is a request header, check if the header is an authorization header
+  if (!req.headers || !req.headers.authorization) {
+    return res.status(401).send({ message: 'No authorization headers.' });
+  }
 
-  // const token_bearer = req.headers.authorization.split(' ');
-  // if(token_bearer.length != 2){
-  //     return res.status(401).send({ message: 'Malformed token.' });
-  // }
+  // Token is "Bearer asdklfasd", we split on the space and take the second half
+  const token_bearer = req.headers.authorization.split(' ');
+  // If the token is not formatted properly, send an error message
+  if (token_bearer.length != 2) {
+    return res.status(401).send({ message: 'Malformed token.' });
+  }
 
-  // const token = token_bearer[1];
+  // Set token to the second item of the array
+  const token = token_bearer[1];
 
-  // return jwt.verify(token, "hello", (err, decoded) => {
-  //   if (err) {
-  //     return res.status(500).send({ auth: false, message: 'Failed to authenticate.' });
-  //   }
-  //   return next();
-  // });
+  // Pass in the token and the secret so that the server can verify it
+  return jwt.verify(token, config.jwt.secret, (err, decoded) => {
+    if (err) {
+      return res
+        .status(500)
+        .send({ auth: false, message: 'Failed to authenticate.' });
+    }
+    return next();
+  });
 }
 
 router.get(
@@ -93,7 +108,7 @@ router.post('/login', async (req: Request, res: Response) => {
   res.status(200).send({ auth: true, token: jwt, user: user.short() });
 });
 
-//register a new user
+// register a new user /api/v0/users/auth/
 router.post('/', async (req: Request, res: Response) => {
   const email = req.body.email;
   const plainTextPassword = req.body.password;
@@ -120,6 +135,7 @@ router.post('/', async (req: Request, res: Response) => {
       .send({ auth: false, message: 'User may already exist' });
   }
 
+  // Password hashing
   const password_hash = await generatePassword(plainTextPassword);
 
   const newUser = await new User({
